@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영어 문제 출제기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background: #f1f5f9; }
+        .paper { font-family: 'Noto Serif', 'Noto Sans KR', serif; }
+        .tab-btn.active { background: #2563eb; color: #fff; }
+        .q-passage { border: 1px solid #cbd5e1; padding: 12px 14px; border-radius: 6px; line-height: 1.8; white-space: pre-wrap; }
+        .q-item { break-inside: avoid; }
+        #questionList, #questionList ol, #answerKey ol { list-style: none; padding-left: 0; }
+        .hidden { display: none; }
+        @media print {
+            body { background: #fff; }
+            .no-print { display: none !important; }
+            #paperWrap { box-shadow: none !important; margin: 0 !important; padding: 0 !important; max-width: none !important; }
+            .q-actions { display: none !important; }
+            #answerKey.print-break { break-before: page; }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+<header class="no-print bg-white border-b">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <h1 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-pen-ruler text-blue-600 mr-2"></i>영어 문제 출제기</h1>
+        <span class="text-xs text-slate-500">지문을 넣고 출제 방식을 고르세요</span>
+    </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 grid lg:grid-cols-2 gap-6">
+
+    <!-- 출제 패널 -->
+    <section class="no-print bg-white rounded-2xl shadow p-5 h-fit">
+        <div class="flex gap-2 mb-5 bg-slate-100 p-1 rounded-xl text-sm font-medium">
+            <button class="tab-btn active flex-1 py-2 rounded-lg" data-tab="ai"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>AI 출제</button>
+            <button class="tab-btn flex-1 py-2 rounded-lg" data-tab="rule"><i class="fa-solid fa-shuffle mr-1"></i>지문 변형</button>
+            <button class="tab-btn flex-1 py-2 rounded-lg" data-tab="manual"><i class="fa-solid fa-keyboard mr-1"></i>직접 입력</button>
+        </div>
+
+        <!-- 공통 지문 입력 (AI / 지문 변형) -->
+        <div id="passageBox">
+            <label class="block text-sm font-semibold text-slate-700 mb-1">영어 지문</label>
+            <textarea id="passage" rows="9" class="w-full border rounded-lg p-3 text-sm focus:outline-blue-500" placeholder="영어 지문을 붙여넣으세요."></textarea>
+            <p class="text-xs text-slate-400 mt-1"><span id="wordCount">0</span> 단어 · <span id="sentCount">0</span> 문장</p>
+        </div>
+
+        <!-- AI 출제 -->
+        <div id="tab-ai" class="tab-panel mt-4 space-y-4">
+            <div>
+                <p class="text-sm font-semibold text-slate-700 mb-2">문제 유형</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm" id="aiTypes"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+                <label>유형별 문항 수
+                    <input id="aiCount" type="number" min="1" max="5" value="1" class="mt-1 w-full border rounded-lg p-2">
+                </label>
+                <label>난이도
+                    <select id="aiLevel" class="mt-1 w-full border rounded-lg p-2">
+                        <option value="중학교">중학교</option>
+                        <option value="고등학교 내신" selected>고등학교 내신</option>
+                        <option value="수능">수능</option>
+                    </select>
+                </label>
+            </div>
+            <details class="text-sm border rounded-lg p-3">
+                <summary class="cursor-pointer font-semibold text-slate-700"><i class="fa-solid fa-key mr-1"></i>Anthropic API 키</summary>
+                <input id="apiKey" type="password" class="mt-2 w-full border rounded-lg p-2" placeholder="sk-ant-...">
+                <p class="text-xs text-slate-500 mt-2">키는 이 브라우저(localStorage)에만 저장되고 Anthropic API로 직접 전송됩니다. 공용 PC에서는 사용 후 지워주세요.</p>
+            </details>
+            <button id="aiGenerate" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>AI로 문제 만들기
+            </button>
+            <p id="aiStatus" class="text-sm text-slate-500"></p>
+        </div>
+
+        <!-- 지문 변형 (규칙 기반) -->
+        <div id="tab-rule" class="tab-panel mt-4 space-y-4 hidden">
+            <p class="text-xs text-slate-500">API 키 없이 바로 지문을 변형해 문제를 만듭니다. 누를 때마다 새로 섞입니다.</p>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="blank" checked>빈칸 (어휘)</label>
+                <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="firstLetter">첫 글자 힌트 빈칸</label>
+                <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="wordOrder" checked>단어 배열 (영작)</label>
+                <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="order" checked>글의 순서</label>
+                <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="insert" checked>문장 삽입</label>
+            </div>
+            <label class="block text-sm">빈칸 개수
+                <input id="blankCount" type="number" min="1" max="15" value="5" class="mt-1 w-full border rounded-lg p-2">
+            </label>
+            <button id="ruleGenerate" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold">
+                <i class="fa-solid fa-shuffle mr-1"></i>변형 문제 만들기
+            </button>
+            <p id="ruleStatus" class="text-sm text-slate-500"></p>
+        </div>
+
+        <!-- 직접 입력 -->
+        <div id="tab-manual" class="tab-panel mt-4 space-y-3 hidden text-sm">
+            <label class="block">유형 이름
+                <input id="mType" class="mt-1 w-full border rounded-lg p-2" placeholder="예: 내용 일치">
+            </label>
+            <label class="block">발문
+                <input id="mInstruction" class="mt-1 w-full border rounded-lg p-2" placeholder="예: 다음 글의 내용과 일치하는 것은?">
+            </label>
+            <label class="block">지문 (선택)
+                <textarea id="mPassage" rows="4" class="mt-1 w-full border rounded-lg p-2"></textarea>
+            </label>
+            <label class="block">선택지 (한 줄에 하나, 비우면 주관식)
+                <textarea id="mChoices" rows="5" class="mt-1 w-full border rounded-lg p-2"></textarea>
+            </label>
+            <div class="grid grid-cols-2 gap-3">
+                <label>정답 (객관식은 번호, 주관식은 답)
+                    <input id="mAnswer" class="mt-1 w-full border rounded-lg p-2" placeholder="예: 3">
+                </label>
+                <label>해설 (선택)
+                    <input id="mExplanation" class="mt-1 w-full border rounded-lg p-2">
+                </label>
+            </div>
+            <button id="manualAdd" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold">
+                <i class="fa-solid fa-plus mr-1"></i>시험지에 추가
+            </button>
+        </div>
+    </section>
+
+    <!-- 시험지 -->
+    <section>
+        <div class="no-print flex flex-wrap items-center gap-2 mb-3 text-sm">
+            <label class="flex items-center gap-1 mr-auto"><input type="checkbox" id="showAnswers" checked>정답·해설 보기</label>
+            <button id="printBtn" class="px-3 py-2 rounded-lg bg-slate-800 text-white"><i class="fa-solid fa-print mr-1"></i>인쇄 / PDF</button>
+            <button id="exportBtn" class="px-3 py-2 rounded-lg bg-white border"><i class="fa-solid fa-download mr-1"></i>저장</button>
+            <label class="px-3 py-2 rounded-lg bg-white border cursor-pointer"><i class="fa-solid fa-upload mr-1"></i>불러오기<input id="importFile" type="file" accept=".json" class="hidden"></label>
+            <button id="clearBtn" class="px-3 py-2 rounded-lg bg-white border text-red-600"><i class="fa-solid fa-trash mr-1"></i>비우기</button>
+        </div>
+        <div id="paperWrap" class="paper bg-white rounded-2xl shadow p-8 max-w-[210mm] mx-auto">
+            <input id="paperTitle" class="w-full text-center text-2xl font-bold border-b-2 border-slate-800 pb-3 mb-2 outline-none" value="영어 문제지">
+            <div class="flex justify-end gap-6 text-sm mb-6">
+                <span>반 ______</span><span>번호 ______</span><span>이름 ____________</span>
+            </div>
+            <ol id="questionList" class="space-y-8"></ol>
+            <p id="emptyMsg" class="no-print text-center text-slate-400 py-16 font-sans">왼쪽에서 문제를 만들면 여기에 쌓입니다.</p>
+            <div id="answerKey" class="mt-10 pt-6 border-t-2 border-dashed"></div>
+        </div>
+    </section>
+</main>
+
+<script type="module">
+const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
+let Anthropic = null;
+
+const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
+const STORAGE_KEY = "quizmaker.questions";
+const KEY_STORAGE = "quizmaker.apiKey";
+
+const AI_TYPES = [
+    ["주제", "글의 주제로 가장 적절한 것은?"],
+    ["제목", "글의 제목으로 가장 적절한 것은?"],
+    ["요지", "글의 요지로 가장 적절한 것은?"],
+    ["빈칸 추론", "빈칸에 들어갈 말로 가장 적절한 것은?"],
+    ["어법", "밑줄 친 부분 중, 어법상 틀린 것은?"],
+    ["어휘", "밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은?"],
+    ["내용 일치", "글의 내용과 일치하는 것은?"],
+    ["요약문 완성", "요약문의 빈칸 (A), (B)에 들어갈 말로 가장 적절한 것은?"],
+    ["서술형 영작", "조건에 맞게 영작하시오."],
+];
+
+const $ = (id) => document.getElementById(id);
+const storage = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+};
+
+let questions = [];
+try { questions = JSON.parse(storage.get(STORAGE_KEY) || "[]"); } catch { questions = []; }
+
+// ---------- 공통 ----------
+function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// AI 지문 안의 <u>…</u> 밑줄만 살리고 나머지는 이스케이프
+function renderPassage(s) {
+    return escapeHtml(s).replace(/&lt;u&gt;/g, "<u>").replace(/&lt;\/u&gt;/g, "</u>");
+}
+
+function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function splitSentences(text) {
+    return text.replace(/\s+/g, " ").trim()
+        .split(/(?<=[.!?]["”’']?)\s+(?=["“‘']?[A-Z])/)
+        .filter((s) => s.trim().length > 0);
+}
+
+function save() {
+    storage.set(STORAGE_KEY, JSON.stringify(questions));
+    render();
+}
+
+function addQuestions(list) {
+    questions.push(...list.map((q) => ({ id: crypto.randomUUID(), ...q })));
+    save();
+}
+
+function answerLabel(q) {
+    if (q.choices?.length && Number.isInteger(q.answerIndex) && q.answerIndex >= 0) {
+        return `${CIRCLED[q.answerIndex]} ${q.choices[q.answerIndex]}`;
+    }
+    return q.answerText || "";
+}
+
+function render() {
+    const list = $("questionList");
+    $("emptyMsg").classList.toggle("hidden", questions.length > 0);
+    list.innerHTML = questions.map((q, i) => `
+        <li class="q-item relative group">
+            <div class="q-actions no-print absolute -right-2 -top-2 hidden group-hover:flex gap-1 font-sans">
+                <button data-act="up" data-i="${i}" class="w-7 h-7 rounded bg-slate-100 text-xs" title="위로"><i class="fa-solid fa-arrow-up"></i></button>
+                <button data-act="down" data-i="${i}" class="w-7 h-7 rounded bg-slate-100 text-xs" title="아래로"><i class="fa-solid fa-arrow-down"></i></button>
+                <button data-act="del" data-i="${i}" class="w-7 h-7 rounded bg-red-50 text-red-600 text-xs" title="삭제"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="font-bold mb-2">${i + 1}. ${escapeHtml(q.instruction)} <span class="no-print font-sans text-xs font-normal text-blue-600 ml-1">[${escapeHtml(q.typeLabel)}]</span></p>
+            ${q.passage ? `<div class="q-passage mb-3">${renderPassage(q.passage)}</div>` : ""}
+            ${q.choices?.length ? `<ol class="space-y-1 pl-1">${q.choices.map((c, ci) => `<li>${CIRCLED[ci]} ${renderPassage(c)}</li>`).join("")}</ol>`
+                : `<div class="border-b border-slate-400 h-8 mt-2"></div>`}
+        </li>`).join("");
+
+    const show = $("showAnswers").checked && questions.length > 0;
+    $("answerKey").classList.toggle("hidden", !show);
+    $("answerKey").innerHTML = show ? `
+        <h2 class="text-xl font-bold mb-4">정답 및 해설</h2>
+        <ol class="space-y-3 text-sm">${questions.map((q, i) => `
+            <li><b>${i + 1}.</b> ${renderPassage(answerLabel(q))}
+            ${q.explanation ? `<p class="text-slate-600 mt-1">${escapeHtml(q.explanation)}</p>` : ""}</li>`).join("")}
+        </ol>` : "";
+}
+
+$("questionList").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const i = Number(btn.dataset.i);
+    if (btn.dataset.act === "del") questions.splice(i, 1);
+    if (btn.dataset.act === "up" && i > 0) [questions[i - 1], questions[i]] = [questions[i], questions[i - 1]];
+    if (btn.dataset.act === "down" && i < questions.length - 1) [questions[i + 1], questions[i]] = [questions[i], questions[i + 1]];
+    save();
+});
+
+// ---------- 탭 ----------
+document.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("hidden", p.id !== `tab-${btn.dataset.tab}`));
+    $("passageBox").classList.toggle("hidden", btn.dataset.tab === "manual");
+}));
+
+$("passage").addEventListener("input", () => {
+    const t = $("passage").value.trim();
+    $("wordCount").textContent = t ? t.split(/\s+/).length : 0;
+    $("sentCount").textContent = t ? splitSentences(t).length : 0;
+});
+
+// ---------- 지문 변형 (규칙 기반) ----------
+const STOPWORDS = new Set(("a an the and or but if then than that this these those there their they them he she it its his her we our you your i me my " +
+    "is are was were be been being am do does did have has had will would can could should may might must shall " +
+    "of in on at to for from by with about into over under after before between through during without within " +
+    "not no so as also very just only more most such what which who whom whose when where why how all any some each " +
+    "other another many much one two because while although though however").split(" "));
+
+function pickBlankWords(sentences, count) {
+    const candidates = [];
+    const seen = new Set();
+    sentences.forEach((s, si) => {
+        if (si === 0 && sentences.length > 2) return; // 첫 문장은 맥락 제공용으로 남김
+        for (const m of s.matchAll(/\b[A-Za-z]{5,}\b/g)) {
+            const w = m[0].toLowerCase();
+            if (STOPWORDS.has(w) || seen.has(w) || (m.index > 0 && /^[A-Z]/.test(m[0]))) continue;
+            seen.add(w);
+            candidates.push({ si, word: m[0], index: m.index });
+        }
+    });
+    return shuffle(candidates).slice(0, count);
+}
+
+function makeBlank(sentences, count, firstLetter) {
+    const picks = pickBlankWords(sentences, count);
+    if (!picks.length) return null;
+    // 지문 등장 순서대로 번호 매김
+    picks.sort((a, b) => a.si - b.si || a.index - b.index);
+    const out = [...sentences];
+    // 같은 문장 안에서는 뒤에서부터 치환해야 인덱스가 안 밀림
+    [...picks].reverse().forEach((p, ri) => {
+        const n = picks.length - ri;
+        const hint = firstLetter ? `${p.word[0]}${"_".repeat(p.word.length - 1)}` : "________";
+        out[p.si] = out[p.si].slice(0, p.index) + `(${n}) ${hint}` + out[p.si].slice(p.index + p.word.length);
+    });
+    return {
+        typeLabel: firstLetter ? "첫 글자 힌트 빈칸" : "빈칸 (어휘)",
+        instruction: firstLetter ? "주어진 첫 글자로 시작하는 알맞은 단어를 빈칸에 쓰시오." : "빈칸에 들어갈 알맞은 단어를 쓰시오.",
+        passage: out.join(" "),
+        choices: [],
+        answerText: picks.map((p, i) => `(${i + 1}) ${p.word}`).join("   "),
+        explanation: "",
+    };
+}
+
+function makeWordOrder(sentences) {
+    const pool = sentences.map((s, si) => ({ s, si, words: s.split(" ") }))
+        .filter((x) => x.words.length >= 6 && x.words.length <= 16 && x.si > 0);
+    if (!pool.length) return null;
+    const target = shuffle(pool)[0];
+    const clean = target.s.replace(/[.!?]["”’']?$/, "");
+    const words = clean.split(" ");
+    let scrambled = shuffle(words);
+    if (scrambled.join(" ") === clean && words.length > 1) scrambled = [...words].reverse();
+    const passage = sentences.map((s, si) => (si === target.si ? "[ __________________________ ]" : s)).join(" ");
+    return {
+        typeLabel: "단어 배열",
+        instruction: "글의 흐름에 맞게 [ ] 안의 단어를 바르게 배열하여 문장을 완성하시오.",
+        passage: `${passage}\n\n< ${scrambled.join(" / ")} >`,
+        choices: [],
+        answerText: target.s,
+        explanation: "",
+    };
+}
+
+const ORDER_PERMS = ["(A)-(C)-(B)", "(B)-(A)-(C)", "(B)-(C)-(A)", "(C)-(A)-(B)", "(C)-(B)-(A)", "(A)-(B)-(C)"];
+
+function makeOrder(sentences) {
+    if (sentences.length < 4) return null;
+    const [first, ...rest] = sentences;
+    // 나머지 문장을 순서대로 3덩어리로 나눔
+    const size = rest.length / 3;
+    const chunks = [0, 1, 2].map((k) => rest.slice(Math.round(k * size), Math.round((k + 1) * size)).join(" "));
+    const labels = ["A", "B", "C"];
+    // 실제 순서가 (A)-(B)-(C)가 되지 않도록 라벨을 섞음 (수능처럼 A가 정답 첫 순서가 아닌 경우가 많게)
+    let order;
+    do { order = shuffle([0, 1, 2]); } while (order[0] === 0 && order[1] === 1);
+    // order[label] = 실제 몇 번째 덩어리인지
+    const labeled = labels.map((L, li) => ({ L, text: chunks[order[li]], pos: order[li] }));
+    const correct = "(" + [...labeled].sort((a, b) => a.pos - b.pos).map((x) => x.L).join(")-(") + ")";
+    const choices = shuffle(ORDER_PERMS.filter((p) => p !== correct)).slice(0, 4).concat(correct).sort();
+    return {
+        typeLabel: "글의 순서",
+        instruction: "주어진 글 다음에 이어질 글의 순서로 가장 적절한 것은?",
+        passage: `${first}\n\n${labeled.map((x) => `(${x.L}) ${x.text}`).join("\n\n")}`,
+        choices,
+        answerIndex: choices.indexOf(correct),
+        explanation: "",
+    };
+}
+
+function makeInsert(sentences) {
+    if (sentences.length < 5) return null;
+    // 첫 문장은 제외하고 삽입할 문장 선택
+    const ti = 1 + Math.floor(Math.random() * (sentences.length - 1));
+    const target = sentences[ti];
+    const remain = sentences.filter((_, i) => i !== ti);
+    // 문장 사이 빈자리: k번째 자리 = remain[k-1] 뒤 (k = 1..remain.length)
+    const correctGap = ti; // target은 원래 remain[ti-1] 뒤에 있었음
+    const allGaps = Array.from({ length: remain.length }, (_, k) => k + 1);
+    const gaps = shuffle(allGaps.filter((g) => g !== correctGap)).slice(0, 4).concat(correctGap).sort((a, b) => a - b);
+    let text = "";
+    remain.forEach((s, k) => {
+        text += (k ? " " : "") + s;
+        const g = gaps.indexOf(k + 1);
+        if (g >= 0) text += ` ( ${CIRCLED[g]} )`;
+    });
+    return {
+        typeLabel: "문장 삽입",
+        instruction: "글의 흐름으로 보아, 주어진 문장이 들어가기에 가장 적절한 곳은?",
+        passage: `[주어진 문장] ${target}\n\n${text}`,
+        choices: [],
+        answerText: CIRCLED[gaps.indexOf(correctGap)],
+        explanation: "",
+    };
+}
+
+$("ruleGenerate").addEventListener("click", () => {
+    const sentences = splitSentences($("passage").value);
+    const status = $("ruleStatus");
+    if (sentences.length < 2) { status.textContent = "지문을 2문장 이상 넣어주세요."; return; }
+    const types = [...document.querySelectorAll(".rule-type:checked")].map((c) => c.value);
+    if (!types.length) { status.textContent = "유형을 하나 이상 고르세요."; return; }
+    const blankCount = Math.max(1, Number($("blankCount").value) || 5);
+    const made = [], skipped = [];
+    const makers = {
+        blank: () => makeBlank(sentences, blankCount, false),
+        firstLetter: () => makeBlank(sentences, blankCount, true),
+        wordOrder: () => makeWordOrder(sentences),
+        order: () => makeOrder(sentences),
+        insert: () => makeInsert(sentences),
+    };
+    const names = { blank: "빈칸", firstLetter: "첫 글자 빈칸", wordOrder: "단어 배열", order: "글의 순서(4문장 이상)", insert: "문장 삽입(5문장 이상)" };
+    types.forEach((t) => { const q = makers[t](); q ? made.push(q) : skipped.push(names[t]); });
+    addQuestions(made);
+    status.textContent = `${made.length}문항 추가됨` + (skipped.length ? ` · 지문이 짧아 건너뜀: ${skipped.join(", ")}` : "");
+});
+
+// ---------- AI 출제 ----------
+$("aiTypes").innerHTML = AI_TYPES.map(([name], i) => `
+    <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="ai-type" value="${i}" ${i < 3 ? "checked" : ""}>${name}</label>`).join("");
+$("apiKey").value = storage.get(KEY_STORAGE) || "";
+$("apiKey").addEventListener("change", () => storage.set(KEY_STORAGE, $("apiKey").value.trim()));
+
+const QUESTION_SCHEMA = {
+    type: "object",
+    properties: {
+        questions: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    type_label: { type: "string" },
+                    instruction: { type: "string" },
+                    passage: { type: "string" },
+                    choices: { type: "array", items: { type: "string" } },
+                    answer_index: { type: "integer" },
+                    answer_text: { type: "string" },
+                    explanation: { type: "string" },
+                },
+                required: ["type_label", "instruction", "passage", "choices", "answer_index", "answer_text", "explanation"],
+                additionalProperties: false,
+            },
+        },
+    },
+    required: ["questions"],
+    additionalProperties: false,
+};
+
+const SYSTEM_PROMPT = `You are an experienced Korean high-school English teacher who writes exam questions (내신/수능 style) from a given English passage.
+Rules:
+- Write instructions (발문), choices for Korean-language types (주제/요지 may be Korean or English as is typical), and explanations in Korean.
+- "passage" holds the version of the passage the student sees for that question: modify it as the type requires (insert a blank "________", underline five parts as <u>①...</u> through <u>⑤...</u> for 어법/어휘, mark (A)/(B) for 요약문). Use "" only if the question needs no passage.
+- Multiple-choice questions have exactly 5 choices (without ①-⑤ prefixes) and answer_index is the 0-based index of the correct one; answer_text repeats the correct answer.
+- Constructed-response (서술형) questions have choices [] and answer_index -1, with the model answer in answer_text and any 조건 in the instruction.
+- Distractors must be plausible but clearly wrong on a careful reading. Exactly one answer may be correct.
+- The explanation briefly justifies the answer with evidence from the passage.`;
+
+$("aiGenerate").addEventListener("click", async () => {
+    const status = $("aiStatus");
+    const btn = $("aiGenerate");
+    const passage = $("passage").value.trim();
+    const apiKey = $("apiKey").value.trim();
+    const types = [...document.querySelectorAll(".ai-type:checked")].map((c) => AI_TYPES[Number(c.value)]);
+    if (!passage) { status.textContent = "지문을 먼저 넣어주세요."; return; }
+    if (!types.length) { status.textContent = "유형을 하나 이상 고르세요."; return; }
+    if (!apiKey) { status.textContent = "API 키를 입력해주세요."; $("apiKey").closest("details").open = true; return; }
+    storage.set(KEY_STORAGE, apiKey);
+
+    const count = Math.min(5, Math.max(1, Number($("aiCount").value) || 1));
+    const request = `난이도: ${$("aiLevel").value}
+유형별 ${count}문항씩, 아래 유형으로 출제하세요:
+${types.map(([name, inst]) => `- ${name} (발문 예: ${inst})`).join("\n")}
+
+<passage>
+${passage}
+</passage>`;
+
+    btn.disabled = true;
+    btn.classList.add("opacity-60");
+    status.textContent = "문제를 만드는 중입니다… (30초~1분 정도 걸릴 수 있어요)";
+    try {
+        Anthropic ??= (await import(SDK_URL)).default;
+        const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+        const message = await client.beta.messages.stream({
+            model: "claude-opus-5-5",
+            max_tokens: 32000,
+            betas: ["server-side-fallback-2026-07-01"],
+            fallbacks: "default",
+            system: SYSTEM_PROMPT,
+            output_config: { effort: "medium", format: { type: "json_schema", schema: QUESTION_SCHEMA } },
+            messages: [{ role: "user", content: request }],
+        }).finalMessage();
+
+        if (message.stop_reason === "refusal") throw new Error("이 지문으로는 문제를 만들 수 없다는 응답을 받았어요. 다른 지문으로 시도해 주세요.");
+        if (message.stop_reason === "max_tokens") throw new Error("응답이 너무 길어 잘렸어요. 문항 수를 줄여 다시 시도해 주세요.");
+        const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+        const data = JSON.parse(text);
+        addQuestions(data.questions.map((q) => ({
+            typeLabel: q.type_label,
+            instruction: q.instruction,
+            passage: q.passage,
+            choices: q.choices,
+            answerIndex: q.choices.length ? q.answer_index : -1,
+            answerText: q.answer_text,
+            explanation: q.explanation,
+        })));
+        status.textContent = `${data.questions.length}문항 추가됨`;
+    } catch (err) {
+        console.error(err);
+        const msg = !Anthropic ? "AI 모듈을 불러오지 못했어요. 네트워크를 확인해 주세요."
+            : err instanceof Anthropic.AuthenticationError ? "API 키가 올바르지 않아요."
+            : err instanceof Anthropic.RateLimitError ? "요청이 많아요. 잠시 후 다시 시도해 주세요."
+            : err instanceof Anthropic.APIError ? `API 오류 (${err.status ?? "network"}): ${err.message}`
+            : err.message;
+        status.textContent = `실패: ${msg}`;
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60");
+    }
+});
+
+// ---------- 직접 입력 ----------
+$("manualAdd").addEventListener("click", () => {
+    const instruction = $("mInstruction").value.trim();
+    if (!instruction) { alert("발문을 입력해주세요."); return; }
+    const choices = $("mChoices").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 8);
+    const answer = $("mAnswer").value.trim();
+    const answerIndex = choices.length ? Number(answer) - 1 : -1;
+    if (choices.length && !(answerIndex >= 0 && answerIndex < choices.length)) { alert(`정답 번호를 1~${choices.length} 사이로 입력해주세요.`); return; }
+    addQuestions([{
+        typeLabel: $("mType").value.trim() || "직접 입력",
+        instruction,
+        passage: $("mPassage").value.trim(),
+        choices,
+        answerIndex,
+        answerText: choices.length ? "" : answer,
+        explanation: $("mExplanation").value.trim(),
+    }]);
+    ["mInstruction", "mPassage", "mChoices", "mAnswer", "mExplanation"].forEach((id) => ($(id).value = ""));
+});
+
+// ---------- 시험지 도구 ----------
+$("showAnswers").addEventListener("change", render);
+$("printBtn").addEventListener("click", () => {
+    $("answerKey").classList.add("print-break");
+    window.print();
+});
+$("clearBtn").addEventListener("click", () => {
+    if (questions.length && confirm("시험지의 모든 문제를 지울까요?")) { questions = []; save(); }
+});
+$("exportBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ title: $("paperTitle").value, questions }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${$("paperTitle").value || "quiz"}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
+$("importFile").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const data = JSON.parse(await file.text());
+        if (data.title) $("paperTitle").value = data.title;
+        questions = Array.isArray(data.questions) ? data.questions : [];
+        save();
+    } catch { alert("불러올 수 없는 파일이에요."); }
+    e.target.value = "";
+});
+
+render();
+</script>
+</body>
+</html>
