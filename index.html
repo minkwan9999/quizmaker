@@ -509,11 +509,13 @@ async function callClaude({ apiKey, model, system, prompt }) {
     }
 }
 
-async function callGemini({ apiKey, model, system, prompt }) {
+const GEMINI_FALLBACK_MODEL = "gemini-flash-lite-latest";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function geminiRequest({ apiKey, model, system, prompt }) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    let res;
     try {
-        res = await fetch(url, {
+        return await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
             body: JSON.stringify({
@@ -529,12 +531,29 @@ async function callGemini({ apiKey, model, system, prompt }) {
     } catch {
         throw new AIError("Gemini 서버에 연결하지 못했어요. 네트워크를 확인해 주세요.");
     }
+}
+
+// 503(서버 혼잡)은 일시적이므로 같은 모델로 재시도한 뒤, 그래도 안 되면 가벼운 모델로 한 번 더 시도
+async function callGemini({ apiKey, model, system, prompt, onStatus }) {
+    const attempts = [model, model, model];
+    if (model !== GEMINI_FALLBACK_MODEL) attempts.push(GEMINI_FALLBACK_MODEL);
+    let res;
+    for (let i = 0; i < attempts.length; i++) {
+        if (i > 0) {
+            const usingFallback = attempts[i] !== model;
+            onStatus?.(usingFallback ? "Gemini가 붐벼서 더 가벼운 모델로 다시 시도하는 중…" : `Gemini가 붐벼서 다시 시도하는 중… (${i}/${attempts.length - 2})`);
+            await sleep(i * 2500);
+        }
+        res = await geminiRequest({ apiKey, model: attempts[i], system, prompt });
+        if (res.status !== 503) break;
+    }
     if (!res.ok) {
         const detail = (await res.json().catch(() => null))?.error?.message || res.statusText;
         if (res.status === 400 && /API key/i.test(detail)) throw new AIError("API 키가 올바르지 않아요.");
         if (res.status === 403) throw new AIError(`접근이 거부됐어요. 키를 확인해 주세요. (${detail})`);
         if (res.status === 404) throw new AIError(`모델을 찾을 수 없어요. 모델 이름을 확인해 주세요. (${model})`);
         if (res.status === 429) throw new AIError("무료 사용 한도에 도달했어요. 잠시 후 다시 시도하거나 내일 다시 이용해 주세요.");
+        if (res.status === 503) throw new AIError("Gemini 서버가 계속 붐비고 있어요. 몇 분 뒤에 다시 시도하거나 Claude 엔진을 이용해 주세요.");
         throw new AIError(`Gemini 오류 (${res.status}): ${detail}`);
     }
     const data = await res.json();
@@ -595,7 +614,7 @@ ${passage}
     status.textContent = "문제를 만드는 중입니다… (30초~1분 정도 걸릴 수 있어요)";
     try {
         const call = engine === "gemini" ? callGemini : callClaude;
-        const text = await call({ apiKey, model, system: SYSTEM_PROMPT, prompt });
+        const text = await call({ apiKey, model, system: SYSTEM_PROMPT, prompt, onStatus: (m) => (status.textContent = m) });
         const made = parseQuestions(text);
         addQuestions(made);
         status.textContent = `${made.length}문항 추가됨`;
