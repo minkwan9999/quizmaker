@@ -11,6 +11,8 @@
         body { font-family: 'Noto Sans KR', sans-serif; background: #f1f5f9; }
         .paper { font-family: 'Noto Serif', 'Noto Sans KR', serif; }
         .tab-btn.active { background: #2563eb; color: #fff; }
+        .lvl-btn { border: 1px solid #cbd5e1; background: #fff; }
+        .lvl-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
         .q-passage { border: 1px solid #cbd5e1; padding: 12px 14px; border-radius: 6px; line-height: 1.8; white-space: pre-wrap; }
         .q-item { break-inside: avoid; }
         #questionList, #questionList ol, #answerKey ol { list-style: none; padding-left: 0; }
@@ -48,6 +50,16 @@
             <label class="block text-sm font-semibold text-slate-700 mb-1">영어 지문</label>
             <textarea id="passage" rows="9" class="w-full border rounded-lg p-3 text-sm focus:outline-blue-500" placeholder="영어 지문을 붙여넣으세요."></textarea>
             <p class="text-xs text-slate-400 mt-1"><span id="wordCount">0</span> 단어 · <span id="sentCount">0</span> 문장</p>
+
+            <div class="mt-4">
+                <p class="text-sm font-semibold text-slate-700 mb-2"><i class="fa-solid fa-gauge-high mr-1"></i>난이도</p>
+                <div class="grid grid-cols-3 gap-2 text-sm font-medium" id="levelBtns">
+                    <button type="button" class="lvl-btn py-2 rounded-lg" data-level="easy">쉬움</button>
+                    <button type="button" class="lvl-btn active py-2 rounded-lg" data-level="normal">보통</button>
+                    <button type="button" class="lvl-btn py-2 rounded-lg" data-level="hard">어려움</button>
+                </div>
+                <p id="levelDesc" class="text-xs text-slate-500 mt-2"></p>
+            </div>
         </div>
 
         <!-- AI 출제 -->
@@ -60,7 +72,7 @@
                 <label>유형별 문항 수
                     <input id="aiCount" type="number" min="1" max="5" value="1" class="mt-1 w-full border rounded-lg p-2">
                 </label>
-                <label>난이도
+                <label>학교급
                     <select id="aiLevel" class="mt-1 w-full border rounded-lg p-2">
                         <option value="중학교">중학교</option>
                         <option value="고등학교 내신" selected>고등학교 내신</option>
@@ -284,6 +296,37 @@ const STOPWORDS = new Set(("a an the and or but if then than that this these tho
     "not no so as also very just only more most such what which who whom whose when where why how all any some each " +
     "other another many much one two because while although though however").split(" "));
 
+// ---------- 난이도 ----------
+const LEVELS = {
+    easy: {
+        label: "쉬움", blanks: 3, minWordLen: 5, orderWords: [6, 10], choices: 3,
+        desc: "AI: 지문에 근거가 분명하고 오답이 뚜렷한 문제 · 변형: 빈칸 3개, 선택지 3개, 짧은 문장 배열",
+        ai: "쉬움. 정답 근거가 지문에 그대로 드러나게 하고, 어휘와 선택지 문장은 쉽고 짧게 쓴다. 오답 선택지는 정답과 확실히 구별되게 만든다. 추론이 필요한 문항은 피한다.",
+    },
+    normal: {
+        label: "보통", blanks: 5, minWordLen: 5, orderWords: [6, 16], choices: 5,
+        desc: "AI: 표준 내신 수준 · 변형: 빈칸 5개, 선택지 5개",
+        ai: "보통. 표준적인 내신 시험 수준으로, 지문을 정확히 이해하면 풀 수 있게 한다. 오답은 그럴듯하지만 근거로 가려낼 수 있게 한다.",
+    },
+    hard: {
+        label: "어려움", blanks: 8, minWordLen: 7, orderWords: [12, 24], choices: 5,
+        desc: "AI: 추론이 필요하고 오답이 매력적인 문제 · 변형: 빈칸 8개(긴 단어 위주), 긴 문장 배열",
+        ai: "어려움. 수능 상위권 변별 수준으로, 문맥 추론과 정밀한 독해가 필요하게 한다. 오답 선택지는 지문의 표현을 일부 가져와 매력적인 함정이 되게 하되 정답은 단 하나여야 한다. 선택지 길이와 형식은 서로 비슷하게 맞춘다.",
+    },
+};
+const LEVEL_STORAGE = "quizmaker.level";
+let level = storage.get(LEVEL_STORAGE);
+if (!LEVELS[level]) level = "normal";
+
+function setLevel(next, { fillBlanks = true } = {}) {
+    level = next;
+    storage.set(LEVEL_STORAGE, level);
+    document.querySelectorAll(".lvl-btn").forEach((b) => b.classList.toggle("active", b.dataset.level === level));
+    $("levelDesc").textContent = LEVELS[level].desc;
+    if (fillBlanks) $("blankCount").value = LEVELS[level].blanks;
+}
+document.querySelectorAll(".lvl-btn").forEach((b) => b.addEventListener("click", () => setLevel(b.dataset.level)));
+
 function pickBlankWords(sentences, count) {
     const candidates = [];
     const seen = new Set();
@@ -296,7 +339,10 @@ function pickBlankWords(sentences, count) {
             candidates.push({ si, word: m[0], index: m.index });
         }
     });
-    return shuffle(candidates).slice(0, count);
+    // 어려움은 긴 단어를 우선 빈칸으로 만들되, 후보가 모자라면 짧은 단어로 채움
+    const long = candidates.filter((c) => c.word.length >= LEVELS[level].minWordLen);
+    const rest = candidates.filter((c) => c.word.length < LEVELS[level].minWordLen);
+    return [...shuffle(long), ...shuffle(rest)].slice(0, count);
 }
 
 function makeBlank(sentences, count, firstLetter) {
@@ -322,8 +368,14 @@ function makeBlank(sentences, count, firstLetter) {
 }
 
 function makeWordOrder(sentences) {
-    const pool = sentences.map((s, si) => ({ s, si, words: s.split(" ") }))
-        .filter((x) => x.words.length >= 6 && x.words.length <= 16 && x.si > 0);
+    const all = sentences.map((s, si) => ({ s, si, words: s.split(" ") })).filter((x) => x.si > 0 && x.words.length >= 4);
+    const [minW, maxW] = LEVELS[level].orderWords;
+    let pool = all.filter((x) => x.words.length >= minW && x.words.length <= maxW);
+    // 난이도 범위에 맞는 문장이 없으면 길이가 가장 가까운 문장을 사용
+    if (!pool.length) {
+        const mid = (minW + maxW) / 2;
+        pool = [...all].sort((a, b) => Math.abs(a.words.length - mid) - Math.abs(b.words.length - mid)).slice(0, 1);
+    }
     if (!pool.length) return null;
     const target = shuffle(pool)[0];
     const clean = target.s.replace(/[.!?]["”’']?$/, "");
@@ -356,7 +408,7 @@ function makeOrder(sentences) {
     // order[label] = 실제 몇 번째 덩어리인지
     const labeled = labels.map((L, li) => ({ L, text: chunks[order[li]], pos: order[li] }));
     const correct = "(" + [...labeled].sort((a, b) => a.pos - b.pos).map((x) => x.L).join(")-(") + ")";
-    const choices = shuffle(ORDER_PERMS.filter((p) => p !== correct)).slice(0, 4).concat(correct).sort();
+    const choices = shuffle(ORDER_PERMS.filter((p) => p !== correct)).slice(0, LEVELS[level].choices - 1).concat(correct).sort();
     return {
         typeLabel: "글의 순서",
         instruction: "주어진 글 다음에 이어질 글의 순서로 가장 적절한 것은?",
@@ -376,7 +428,7 @@ function makeInsert(sentences) {
     // 문장 사이 빈자리: k번째 자리 = remain[k-1] 뒤 (k = 1..remain.length)
     const correctGap = ti; // target은 원래 remain[ti-1] 뒤에 있었음
     const allGaps = Array.from({ length: remain.length }, (_, k) => k + 1);
-    const gaps = shuffle(allGaps.filter((g) => g !== correctGap)).slice(0, 4).concat(correctGap).sort((a, b) => a - b);
+    const gaps = shuffle(allGaps.filter((g) => g !== correctGap)).slice(0, LEVELS[level].choices - 1).concat(correctGap).sort((a, b) => a - b);
     let text = "";
     remain.forEach((s, k) => {
         text += (k ? " " : "") + s;
@@ -399,7 +451,7 @@ $("ruleGenerate").addEventListener("click", () => {
     if (sentences.length < 2) { status.textContent = "지문을 2문장 이상 넣어주세요."; return; }
     const types = [...document.querySelectorAll(".rule-type:checked")].map((c) => c.value);
     if (!types.length) { status.textContent = "유형을 하나 이상 고르세요."; return; }
-    const blankCount = Math.max(1, Number($("blankCount").value) || 5);
+    const blankCount = Math.max(1, Number($("blankCount").value) || LEVELS[level].blanks);
     const made = [], skipped = [];
     const makers = {
         blank: () => makeBlank(sentences, blankCount, false),
@@ -601,7 +653,8 @@ $("aiGenerate").addEventListener("click", async () => {
     storage.set(modelStorage(engine), model);
 
     const count = Math.min(5, Math.max(1, Number($("aiCount").value) || 1));
-    const prompt = `난이도: ${$("aiLevel").value}
+    const prompt = `대상: ${$("aiLevel").value}
+난이도: ${LEVELS[level].ai}
 유형별 ${count}문항씩, 아래 유형으로 출제하세요:
 ${types.map(([name, inst]) => `- ${name} (발문 예: ${inst})`).join("\n")}
 
@@ -676,6 +729,7 @@ $("importFile").addEventListener("change", async (e) => {
     e.target.value = "";
 });
 
+setLevel(level);
 render();
 </script>
 </body>
