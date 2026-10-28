@@ -50,6 +50,7 @@
             <label class="block text-sm font-semibold text-slate-700 mb-1">영어 지문</label>
             <textarea id="passage" rows="9" class="w-full border rounded-lg p-3 text-sm focus:outline-blue-500" placeholder="영어 지문을 붙여넣으세요."></textarea>
             <p class="text-xs text-slate-400 mt-1"><span id="wordCount">0</span> 단어 · <span id="sentCount">0</span> 문장</p>
+            <p id="passageLevel" class="text-xs mt-1 hidden"></p>
 
             <div class="mt-4">
                 <p class="text-sm font-semibold text-slate-700 mb-2"><i class="fa-solid fa-gauge-high mr-1"></i>난이도</p>
@@ -240,6 +241,18 @@ function answerLabel(q) {
     return q.answerText || "";
 }
 
+const EXPECTED_RATING = { easy: [1, 2], normal: [2, 4], hard: [4, 5] };
+
+function difficultyBadge(q) {
+    if (!q.aiDifficulty) return "";
+    const [lo, hi] = EXPECTED_RATING[q.requestedLevel] || [1, 5];
+    const off = q.aiDifficulty < lo || q.aiDifficulty > hi;
+    const stars = "★".repeat(q.aiDifficulty) + "☆".repeat(5 - q.aiDifficulty);
+    return `<p class="no-print font-sans text-xs mb-2 ${off ? "text-amber-700 bg-amber-50" : "text-slate-600 bg-slate-50"} rounded px-2 py-1 inline-block">
+        AI 자가평가(참고용) <b>${stars} ${q.aiDifficulty}/5</b>${q.aiDifficultyReason ? ` · ${escapeHtml(q.aiDifficultyReason)}` : ""}
+        ${off ? `<br>⚠ 요청한 난이도(${LEVELS[q.requestedLevel].label})와 다르게 나온 것 같아요. 직접 확인해 보세요.` : ""}</p>`;
+}
+
 function render() {
     const list = $("questionList");
     $("emptyMsg").classList.toggle("hidden", questions.length > 0);
@@ -251,6 +264,7 @@ function render() {
                 <button data-act="del" data-i="${i}" class="w-7 h-7 rounded bg-red-50 text-red-600 text-xs" title="삭제"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <p class="font-bold mb-2">${i + 1}. ${escapeHtml(q.instruction)} <span class="no-print font-sans text-xs font-normal text-blue-600 ml-1">[${escapeHtml(q.typeLabel)}]</span></p>
+            ${difficultyBadge(q)}
             ${q.passage ? `<div class="q-passage mb-3">${renderPassage(q.passage)}</div>` : ""}
             ${q.choices?.length ? `<ol class="space-y-1 pl-1">${q.choices.map((c, ci) => `<li>${CIRCLED[ci]} ${renderPassage(c)}</li>`).join("")}</ol>`
                 : `<div class="border-b border-slate-400 h-8 mt-2"></div>`}
@@ -283,11 +297,44 @@ document.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("cli
     $("passageBox").classList.toggle("hidden", btn.dataset.tab === "manual");
 }));
 
-$("passage").addEventListener("input", () => {
+// ---------- 지문 난이도 추정 (Flesch-Kincaid 학년 지수 기반, 참고용) ----------
+function countSyllables(word) {
+    let w = word.toLowerCase().replace(/[^a-z]/g, "");
+    if (w.length <= 3) return w ? 1 : 0;
+    w = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, "").replace(/^y/, "");
+    return (w.match(/[aeiouy]{1,2}/g) || [""]).length;
+}
+
+function analyzePassage(text) {
+    const words = text.match(/[A-Za-z][A-Za-z'’-]*/g) || [];
+    const sentences = splitSentences(text);
+    if (words.length < 30 || sentences.length < 2) return null;
+    const wps = words.length / sentences.length;
+    const spw = words.reduce((n, w) => n + countSyllables(w), 0) / words.length;
+    const longRatio = words.filter((w) => w.length >= 8).length / words.length;
+    const grade = 0.39 * wps + 11.8 * spw - 15.59;
+    const band = grade < 6 ? ["쉬움", "text-green-600"]
+        : grade < 9 ? ["중하", "text-lime-600"]
+        : grade < 12 ? ["중간", "text-amber-600"]
+        : grade < 15 ? ["중상", "text-orange-600"]
+        : ["어려움", "text-red-600"];
+    return { label: band[0], color: band[1], wps, longRatio, grade };
+}
+
+function updatePassageInfo() {
     const t = $("passage").value.trim();
     $("wordCount").textContent = t ? t.split(/\s+/).length : 0;
     $("sentCount").textContent = t ? splitSentences(t).length : 0;
-});
+    const box = $("passageLevel");
+    if (!t) { box.classList.add("hidden"); return; }
+    const a = analyzePassage(t);
+    box.classList.remove("hidden");
+    box.className = "text-xs mt-1 text-slate-500";
+    box.innerHTML = a
+        ? `지문 난이도(추정): <b class="${a.color}">${a.label}</b> · 평균 문장 ${a.wps.toFixed(1)}단어 · 긴 단어(8자 이상) ${Math.round(a.longRatio * 100)}% <span class="text-slate-400">— 참고용 지표예요</span>`
+        : "지문이 짧아(30단어·2문장 미만) 난이도를 추정하기 어려워요.";
+}
+$("passage").addEventListener("input", updatePassageInfo);
 
 // ---------- 지문 변형 (규칙 기반) ----------
 const STOPWORDS = new Set(("a an the and or but if then than that this these those there their they them he she it its his her we our you your i me my " +
@@ -515,8 +562,10 @@ const QUESTION_SCHEMA = {
                     answer_index: { type: "integer" },
                     answer_text: { type: "string" },
                     explanation: { type: "string" },
+                    difficulty: { type: "integer" },
+                    difficulty_reason: { type: "string" },
                 },
-                required: ["type_label", "instruction", "passage", "choices", "answer_index", "answer_text", "explanation"],
+                required: ["type_label", "instruction", "passage", "choices", "answer_index", "answer_text", "explanation", "difficulty", "difficulty_reason"],
                 additionalProperties: false,
             },
         },
@@ -532,7 +581,8 @@ Rules:
 - Multiple-choice questions have exactly 5 choices (without ①-⑤ prefixes) and answer_index is the 0-based index of the correct one; answer_text repeats the correct answer.
 - Constructed-response (서술형) questions have choices [] and answer_index -1, with the model answer in answer_text and any 조건 in the instruction.
 - Distractors must be plausible but clearly wrong on a careful reading. Exactly one answer may be correct.
-- The explanation briefly justifies the answer with evidence from the passage.`;
+- The explanation briefly justifies the answer with evidence from the passage.
+- "difficulty" is your honest estimate (1 = very easy, 3 = typical 내신, 5 = very hard 수능 킬러) of how hard the finished question is for the target students. Rate the question as written; do NOT simply repeat the requested level - if the result came out easier or harder than requested, say so. "difficulty_reason" is one short Korean sentence naming the concrete factors (e.g. 추론 필요 여부, 오답의 매력도, 어휘 수준).`;
 
 class AIError extends Error {}
 
@@ -634,6 +684,9 @@ function parseQuestions(text) {
             answerIndex: choices.length && idx >= 0 && idx < choices.length ? idx : -1,
             answerText: q.answer_text || "",
             explanation: q.explanation || "",
+            aiDifficulty: Number.isInteger(q.difficulty) && q.difficulty >= 1 && q.difficulty <= 5 ? q.difficulty : null,
+            aiDifficultyReason: q.difficulty_reason || "",
+            requestedLevel: level,
         };
     });
 }
