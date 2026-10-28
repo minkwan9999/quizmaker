@@ -51,16 +51,6 @@
             <textarea id="passage" rows="9" class="w-full border rounded-lg p-3 text-sm focus:outline-blue-500" placeholder="영어 지문을 붙여넣으세요."></textarea>
             <p class="text-xs text-slate-400 mt-1"><span id="wordCount">0</span> 단어 · <span id="sentCount">0</span> 문장</p>
             <p id="passageLevel" class="text-xs mt-1 hidden"></p>
-
-            <div class="mt-4">
-                <p class="text-sm font-semibold text-slate-700 mb-2"><i class="fa-solid fa-gauge-high mr-1"></i>난이도</p>
-                <div class="grid grid-cols-3 gap-2 text-sm font-medium" id="levelBtns">
-                    <button type="button" class="lvl-btn py-2 rounded-lg" data-level="easy">쉬움</button>
-                    <button type="button" class="lvl-btn active py-2 rounded-lg" data-level="normal">보통</button>
-                    <button type="button" class="lvl-btn py-2 rounded-lg" data-level="hard">어려움</button>
-                </div>
-                <p id="levelDesc" class="text-xs text-slate-500 mt-2"></p>
-            </div>
         </div>
 
         <!-- AI 출제 -->
@@ -69,23 +59,33 @@
                 <p class="text-sm font-semibold text-slate-700 mb-2">문제 유형</p>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm" id="aiTypes"></div>
             </div>
-            <div class="grid grid-cols-2 gap-3 text-sm">
-                <label>유형별 문항 수
-                    <input id="aiCount" type="number" min="1" max="5" value="1" class="mt-1 w-full border rounded-lg p-2">
-                </label>
-                <label>학교급
-                    <select id="aiLevel" class="mt-1 w-full border rounded-lg p-2">
-                        <option value="중학교">중학교</option>
-                        <option value="고등학교 내신" selected>고등학교 내신</option>
-                        <option value="수능">수능</option>
-                    </select>
-                </label>
+            <div>
+                <div class="grid grid-cols-[4.5rem_1fr_1.4fr] gap-2 sm:gap-3 text-sm items-start">
+                    <label class="block">문항 수
+                        <input id="aiCount" type="number" min="1" max="5" value="1" title="유형별 문항 수" class="mt-1 w-full h-10 border rounded-lg px-2">
+                    </label>
+                    <label class="block">학교급
+                        <select id="aiLevel" class="mt-1 w-full h-10 border rounded-lg px-1">
+                            <option value="중학교">중학교</option>
+                            <option value="고등학교 내신" selected>고등 내신</option>
+                            <option value="수능">수능</option>
+                        </select>
+                    </label>
+                    <div>난이도
+                        <div class="lvl-group grid grid-cols-3 gap-1 mt-1">
+                        <button type="button" class="lvl-btn h-10 rounded-lg text-xs sm:text-sm" data-level="easy">쉬움</button>
+                        <button type="button" class="lvl-btn h-10 rounded-lg text-xs sm:text-sm" data-level="normal">보통</button>
+                        <button type="button" class="lvl-btn h-10 rounded-lg text-xs sm:text-sm" data-level="hard">어려움</button>
+                    </div>
+                    </div>
+                </div>
+                <p class="level-desc text-xs text-slate-500 mt-2"></p>
             </div>
             <div class="text-sm">
                 <p class="font-semibold text-slate-700 mb-2">AI 엔진</p>
                 <div class="grid grid-cols-2 gap-2">
                     <label class="flex items-center gap-2 border rounded-lg p-2"><input type="radio" name="engine" value="gemini" checked>Gemini <span class="text-xs text-green-600">무료</span></label>
-                    <label class="flex items-center gap-2 border rounded-lg p-2"><input type="radio" name="engine" value="claude">Claude <span class="text-xs text-slate-500">유료·고품질</span></label>
+                    <label class="flex items-center gap-2 border rounded-lg p-2"><input type="radio" name="engine" value="claude">Claude <span class="text-xs text-slate-500">유료</span></label>
                 </div>
             </div>
             <details class="text-sm border rounded-lg p-3" id="keyBox" open>
@@ -112,9 +112,21 @@
                 <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="order" checked>글의 순서</label>
                 <label class="flex items-center gap-2 border rounded-lg p-2"><input type="checkbox" class="rule-type" value="insert" checked>문장 삽입</label>
             </div>
-            <label class="block text-sm">빈칸 개수
-                <input id="blankCount" type="number" min="1" max="15" value="5" class="mt-1 w-full border rounded-lg p-2">
-            </label>
+            <div>
+                <div class="grid grid-cols-[5rem_1fr] gap-2 sm:gap-3 text-sm items-start">
+                    <label class="block">빈칸 수
+                        <input id="blankCount" type="number" min="1" max="15" value="5" class="mt-1 w-full h-10 border rounded-lg px-2">
+                    </label>
+                    <div>난이도
+                        <div class="lvl-group grid grid-cols-3 gap-1 mt-1">
+                        <button type="button" class="lvl-btn h-10 rounded-lg text-xs sm:text-sm" data-level="easy">쉬움</button>
+                        <button type="button" class="lvl-btn h-10 rounded-lg text-xs sm:text-sm" data-level="normal">보통</button>
+                        <button type="button" class="lvl-btn h-10 rounded-lg text-xs sm:text-sm" data-level="hard">어려움</button>
+                    </div>
+                    </div>
+                </div>
+                <p class="level-desc text-xs text-slate-500 mt-2"></p>
+            </div>
             <button id="ruleGenerate" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold">
                 <i class="fa-solid fa-shuffle mr-1"></i>변형 문제 만들기
             </button>
@@ -369,7 +381,7 @@ function setLevel(next, { fillBlanks = true } = {}) {
     level = next;
     storage.set(LEVEL_STORAGE, level);
     document.querySelectorAll(".lvl-btn").forEach((b) => b.classList.toggle("active", b.dataset.level === level));
-    $("levelDesc").textContent = LEVELS[level].desc;
+    document.querySelectorAll(".level-desc").forEach((el) => (el.textContent = LEVELS[level].desc));
     if (fillBlanks) $("blankCount").value = LEVELS[level].blanks;
 }
 document.querySelectorAll(".lvl-btn").forEach((b) => b.addEventListener("click", () => setLevel(b.dataset.level)));
